@@ -78,11 +78,23 @@ def main() -> None:
         run_analysis()
         return
 
-    run_time = os.environ.get("RUN_TIME", "09:00")
-    print(f"Stock Analysis Agent started. Runs daily at {run_time} (local time).")
+    market_open  = os.environ.get("RUN_TIME", "09:30")
+    market_close = os.environ.get("MARKET_CLOSE", "16:00")
+
+    print(f"Stock Analysis Agent started.")
+    print(f"Sends hourly reports from {market_open} to {market_close} (local time).")
     print("Run  python main.py --run-now  to trigger immediately.\n")
 
-    schedule.every().day.at(run_time).do(run_analysis)
+    open_minute = market_open.split(":")[1]  # keep runs aligned to market-open minute
+
+    def run_if_market_open() -> None:
+        now = datetime.now().strftime("%H:%M")
+        if market_open <= now < market_close:
+            run_analysis()
+        else:
+            print(f"[{datetime.now().isoformat()}] Outside market hours ({market_open}–{market_close}) — skipping.")
+
+    schedule.every().hour.at(f":{open_minute}").do(run_if_market_open)
 
     while True:
         schedule.run_pending()
