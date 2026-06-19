@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Optional
 
 import requests
@@ -25,7 +25,6 @@ def fetch_market_news(tickers: list[str]) -> list[NewsArticle]:
         print("⚠️  NEWS_API_KEY not set — skipping news fetch")
         return []
 
-    since = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
     queries = [
         "stock market economy",
         "federal reserve inflation interest rates",
@@ -45,7 +44,6 @@ def fetch_market_news(tickers: list[str]) -> list[NewsArticle]:
                     "language": "en",
                     "sortBy": "publishedAt",
                     "pageSize": 5,
-                    "from": since,
                     "apiKey": api_key,
                 },
                 timeout=8,

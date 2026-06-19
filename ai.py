@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 import anthropic
 from dotenv import load_dotenv
@@ -22,8 +21,6 @@ class Recommendation:
     action: str           # BUY | SELL | HOLD
     confidence: str       # HIGH | MEDIUM | LOW
     current_price: float
-    target_price: Optional[float]
-    stop_loss: Optional[float]
     reasoning: str
     buy_price: float = 0.0
     unrealized_pnl: float = 0.0
@@ -114,6 +111,8 @@ def generate_report(
 {stocks_text}
 
 ## Instructions
+STRICT RULE — NO EXCEPTIONS: Every "reasoning" value must contain ONLY references to the technical indicators above (RSI, MACD, Bollinger Bands, SMA, price action) and relevant news. Do NOT mention price targets, stop-loss levels, or any bank/analyst ratings (Goldman Sachs, Morgan Stanley, JPMorgan, etc.) anywhere in the JSON output.
+
 Reply with ONLY valid JSON — no markdown fences, no prose outside the JSON:
 
 {{
@@ -125,9 +124,7 @@ Reply with ONLY valid JSON — no markdown fences, no prose outside the JSON:
       "action": "BUY",
       "confidence": "HIGH",
       "current_price": 192.50,
-      "target_price": 210.00,
-      "stop_loss": 182.00,
-      "reasoning": "Cite RSI, MACD, BB, SMA signals and any news context (2-4 sentences)"
+      "reasoning": "Cite RSI, MACD, BB, SMA signals and any news context only (2-4 sentences) — NO price targets, NO stop-loss, NO bank ratings"
     }}
   ],
   "top_buy": ["TICKER1"],
@@ -137,10 +134,9 @@ Reply with ONLY valid JSON — no markdown fences, no prose outside the JSON:
 Rules:
 - action must be "BUY", "SELL", or "HOLD" (exact case)
 - confidence must be "HIGH", "MEDIUM", or "LOW"
-- target_price and stop_loss are optional — derive from BB/SMA levels when clear, else omit (null)
-- target_price for any position with a buy_price must always exceed the buy_price (the investor needs to at least break even); if technicals don't support a target above buy_price, set action to HOLD or SELL instead
 - Only include a ticker in top_buy/top_sell when there is a strong, multi-indicator signal
-- Each stock shows its brokerage fee and break-even % — only recommend BUY or SELL when the expected move clearly exceeds the break-even threshold; otherwise prefer HOLD"""
+- Each stock shows its brokerage fee and break-even % — only recommend BUY or SELL when the expected move clearly exceeds the break-even threshold; otherwise prefer HOLD
+- reasoning must cite only the technical indicators and news provided — never price targets, stop-loss levels, or analyst/bank ratings"""
 
     with client.messages.stream(
         model="claude-opus-4-7",
@@ -164,13 +160,12 @@ Rules:
 
     def to_rec(r: dict) -> Recommendation:
         a = analysis_map.get(r["ticker"])
+        ticker = r["ticker"]
         return Recommendation(
-            ticker=r["ticker"],
+            ticker=ticker,
             action=r["action"],
             confidence=r["confidence"],
             current_price=float(r["current_price"]),
-            target_price=float(r["target_price"]) if r.get("target_price") else None,
-            stop_loss=float(r["stop_loss"]) if r.get("stop_loss") else None,
             reasoning=r["reasoning"],
             buy_price=a.buy_price if a else 0.0,
             unrealized_pnl=a.unrealized_pnl if a else 0.0,

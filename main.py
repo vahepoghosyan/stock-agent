@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from stocks import TechnicalAnalysis, analyze_stock
 from news import fetch_market_news
 from ai import generate_report
-from email_sender import send_report
+from email_sender import send_report, send_error_email
 
 
 load_dotenv()
@@ -52,7 +52,7 @@ def run_analysis() -> None:
         print("No stocks analyzed — aborting.")
         return
 
-    # News
+    # Fetch news
     print("Fetching market news...")
     news = fetch_market_news(tickers)
     print(f"  {len(news)} articles fetched")
@@ -75,26 +75,43 @@ def run_analysis() -> None:
 
 def main() -> None:
     if "--run-now" in sys.argv:
-        run_analysis()
+        try:
+            run_analysis()
+        except Exception as exc:
+            print(f"ERROR: {exc}")
+            try:
+                send_error_email(exc)
+                print("Error notification sent by email.")
+            except Exception as mail_exc:
+                print(f"Failed to send error email: {mail_exc}")
         return
 
-    market_open  = os.environ.get("RUN_TIME", "09:30")
-    market_close = os.environ.get("MARKET_CLOSE", "16:00")
+    market_open  = os.environ["RUN_TIME"]
+    market_close = os.environ["MARKET_CLOSE"]
 
     print(f"Stock Analysis Agent started.")
-    print(f"Sends hourly reports from {market_open} to {market_close} (local time).")
+    print(f"Sends reports every 1 minute from {market_open} to {market_close} (local time).")
     print("Run  python main.py --run-now  to trigger immediately.\n")
 
-    open_minute = market_open.split(":")[1]  # keep runs aligned to market-open minute
-
     def run_if_market_open() -> None:
-        now = datetime.now().strftime("%H:%M")
-        if market_open <= now < market_close:
-            run_analysis()
+        now = datetime.now()
+        if now.weekday() >= 5:  # 5=Saturday, 6=Sunday
+            print(f"[{now.isoformat()}] Weekend — market closed, skipping.")
+            return
+        time_str = now.strftime("%H:%M")
+        if market_open <= time_str < market_close:
+            try:
+                run_analysis()
+            except Exception as exc:
+                print(f"[{now.isoformat()}] ERROR: {exc}")
+                try:
+                    send_error_email(exc)
+                except Exception as mail_exc:
+                    print(f"  Failed to send error email: {mail_exc}")
         else:
-            print(f"[{datetime.now().isoformat()}] Outside market hours ({market_open}–{market_close}) — skipping.")
+            print(f"[{now.isoformat()}] Outside market hours ({market_open}–{market_close}) — skipping.")
 
-    schedule.every().hour.at(f":{open_minute}").do(run_if_market_open)
+    schedule.every(60).minutes.do(run_if_market_open)
 
     while True:
         schedule.run_pending()

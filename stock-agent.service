@@ -1,0 +1,17 @@
+[Unit]
+Description=Stock Analysis Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=poghova
+WorkingDirectory=/home/poghova/projects/stock-agent
+ExecStart=/home/poghova/venv/bin/watchmedo auto-restart --directory=/home/poghova/projects/stock-agent --pattern="*.py;*.json" --recursive -- /home/poghova/venv/bin/python3 main.py
+Restart=always
+RestartSec=30
+StandardOutput=append:/home/poghova/projects/stock-agent/output.log
+StandardError=append:/home/poghova/projects/stock-agent/output.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,16 +1,19 @@
 {
   "stocks": [
     { "ticker": "DC",   "name": "Dakota Gold Corp.",                         "shares": 21, "buy_price": 5.71 },
-    { "ticker": "PLTR", "name": "Palantir Technologies Inc.",                "shares": 7,  "buy_price": 178.35 },
+    { "ticker": "PLTR", "name": "Palantir Technologies Inc.",                "shares": 14,  "buy_price": 160.57 },
     { "ticker": "LI",   "name": "Li Auto Inc.",                              "shares": 70, "buy_price": 17.46 },
-    { "ticker": "PANW", "name": "Palo Alto Networks Inc.",                   "shares": 3,  "buy_price": 189.15 },
-    { "ticker": "FRHC", "name": "Freedom Holding Corp.",                     "shares": 45, "buy_price": 146.84 },
+    { "ticker": "FXI", "name": "iShares China Large-Cap ETF",                   "shares": 4,  "buy_price": 35.01 },
     { "ticker": "ORCL", "name": "Oracle Corp.",                              "shares": 11, "buy_price": 258.74 },
     { "ticker": "XPER", "name": "Xperi Holding Corp.",                       "shares": 30, "buy_price": 6.41 },
-    { "ticker": "PDS",  "name": "Precision Drilling Corp.",                  "shares": 4,  "buy_price": 54.38 },
+    { "ticker": "AVNW",  "name": "Aviat Networks Inc.",                      "shares": 10,  "buy_price": 18.05 },
     { "ticker": "BHRB", "name": "Burke and Herbert Financial Services Corp.", "shares": 4,  "buy_price": 58.18 },
     { "ticker": "ALLT", "name": "Allot Ltd.",                                "shares": 20, "buy_price": 10 },
     { "ticker": "ANIX", "name": "Anixa Biosciences Inc.",                    "shares": 50, "buy_price": 4.52 },
-    { "ticker": "SMCI", "name": "Super Micro Computer Inc.",                 "shares": 60, "buy_price": 41.95 }
+    { "ticker": "SMCI", "name": "Super Micro Computer Inc.",                 "shares": 60, "buy_price": 41.93 },
+    { "ticker": "AAAU", "name": "Goldman Sachs Physical Gold ETF",                 "shares": 10, "buy_price": 44.65 },
+    { "ticker": "WMT", "name": "Wal-Mart Stores",                 "shares": 3, "buy_price": 118.24 },
+    { "ticker": "NFLX", "name": "Netflix Inc.",                 "shares": 24, "buy_price": 81.29 },
+    { "ticker": "FRHC", "name": "Freedom Holding CORP",                 "shares": 29, "buy_price": 138.03 }
   ]
 }

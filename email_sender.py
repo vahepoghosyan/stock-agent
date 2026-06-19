@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import os
 import smtplib
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from ai import AnalysisReport, Recommendation
+from charts import generate_1h_candlestick_chart
 
 
 def _action_color(action: str) -> str:
@@ -17,6 +20,8 @@ def _action_color(action: str) -> str:
 
 def _action_bg(action: str) -> str:
     return {"BUY": "#dcfce7", "SELL": "#fee2e2"}.get(action, "#fef9c3")
+
+
 
 
 def _sort_recs(recs: list[Recommendation]) -> list[Recommendation]:
@@ -59,7 +64,7 @@ def _portfolio_summary_html(report: AnalysisReport) -> str:
 </div>"""
 
 
-def _html(report: AnalysisReport) -> str:
+def _html(report: AnalysisReport, chart_tickers: set[str] | None = None) -> str:
     date_str = datetime.fromisoformat(report.generated_at).strftime(
         "%A, %B %-d, %Y"
     )
@@ -70,10 +75,6 @@ def _html(report: AnalysisReport) -> str:
             price_cells += f"<td style='padding:3px 10px;'><strong>Value:</strong> ${r.position_value:,.2f} ({r.shares} shares)</td>"
         if r.buy_price > 0:
             price_cells += f"<td style='padding:3px 10px;'><strong>Bought:</strong> ${r.buy_price:.2f}</td>"
-        if r.target_price:
-            price_cells += f"<td style='padding:3px 10px;'><strong>Target:</strong> ${r.target_price:.2f}</td>"
-        if r.stop_loss:
-            price_cells += f"<td style='padding:3px 10px;'><strong>Stop:</strong> ${r.stop_loss:.2f}</td>"
 
         pnl_block = ""
         if r.buy_price > 0:
@@ -88,6 +89,13 @@ def _html(report: AnalysisReport) -> str:
                 f"</div>"
             )
 
+        chart_block = ""
+        if chart_tickers and r.ticker in chart_tickers:
+            chart_block = (
+                f"<img src='cid:chart_{r.ticker}' "
+                f"style='width:100%;max-width:600px;border-radius:6px;"
+                f"margin-bottom:12px;display:block;' alt='{r.ticker} candlestick chart'>"
+            )
         return f"""
 <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:12px;background:#fff;">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
@@ -98,6 +106,7 @@ def _html(report: AnalysisReport) -> str:
     </h3>
     <span style="color:#6b7280;font-size:12px;background:#f3f4f6;padding:2px 8px;border-radius:12px;">{r.confidence} confidence</span>
   </div>
+  {chart_block}
   <table style="font-size:13px;color:#374151;margin-bottom:10px;"><tr>{price_cells}</tr></table>
   {pnl_block}
   <p style="margin:0;font-size:14px;color:#4b5563;line-height:1.65;">{r.reasoning}</p>
@@ -204,10 +213,6 @@ def _text(report: AnalysisReport) -> str:
         if r.buy_price > 0:
             sign = "+" if r.unrealized_pnl >= 0 else ""
             lines.append(f"  Bought: ${r.buy_price:.2f}  |  P&L: {sign}${r.unrealized_pnl:.2f} ({sign}{r.unrealized_pnl_pct:.2f}%)")
-        if r.target_price:
-            lines.append(f"  Target: ${r.target_price:.2f}")
-        if r.stop_loss:
-            lines.append(f"  Stop: ${r.stop_loss:.2f}")
         lines.append(f"  {r.reasoning}")
         lines.append("")
 
@@ -220,12 +225,68 @@ def send_report(report: AnalysisReport) -> None:
     password = os.environ["GMAIL_APP_PASSWORD"]
     to = os.environ.get("EMAIL_TO", user)
 
-    msg = MIMEMultipart("alternative")
+    # Generate candlestick charts in parallel
+    tickers = [r.ticker for r in report.recommendations]
+    charts: dict[str, bytes] = {}
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = {pool.submit(generate_1h_candlestick_chart, t): t for t in tickers}
+        for future in as_completed(futures):
+            ticker = futures[future]
+            data = future.result()
+            if data:
+                charts[ticker] = data
+
+    html_content = _html(report, set(charts.keys()))
+
+    # multipart/mixed
+    #   multipart/alternative
+    #     text/plain
+    #     multipart/related        ← html + inline images
+    #       text/html
+    #       image/png (cid per ticker)
+    msg = MIMEMultipart("mixed")
     msg["Subject"] = _subject(report)
     msg["From"] = f"Stock Agent 📈 <{user}>"
     msg["To"] = to
-    msg.attach(MIMEText(_text(report), "plain"))
-    msg.attach(MIMEText(_html(report), "html"))
+
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(_text(report), "plain"))
+
+    related = MIMEMultipart("related")
+    related.attach(MIMEText(html_content, "html"))
+    for ticker, img_bytes in charts.items():
+        img = MIMEImage(img_bytes, "png")
+        img.add_header("Content-ID", f"<chart_{ticker}>")
+        img.add_header("Content-Disposition", "inline", filename=f"{ticker}_chart.png")
+        related.attach(img)
+
+    alt.attach(related)
+    msg.attach(alt)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(user, password)
+        server.sendmail(user, to, msg.as_string())
+
+
+def send_error_email(error: Exception) -> None:
+    """Send a plain error notification email."""
+    user = os.environ["GMAIL_USER"]
+    password = os.environ["GMAIL_APP_PASSWORD"]
+    to = os.environ.get("EMAIL_TO", user)
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    subject = f"⚠️ Stock Agent Error — {type(error).__name__} at {now}"
+    body = (
+        f"Stock Agent encountered an error at {now}:\n\n"
+        f"Type: {type(error).__name__}\n"
+        f"Message: {error}\n"
+    )
+
+    msg = MIMEMultipart()
+    msg["Subject"] = subject
+    msg["From"] = f"Stock Agent 📈 <{user}>"
+    msg["To"] = to
+    msg.attach(MIMEText(body, "plain"))
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(user, password)
